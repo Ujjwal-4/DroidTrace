@@ -103,25 +103,26 @@ public sealed class MainForm : Form
         Font = Theme.BodyFont;
 
         // Root layout
+        // WinForms docks controls in reverse Controls order: the LAST control added is docked FIRST.
+        // So add the Fill panel first, then the sidebar, then the status bar. Otherwise the Fill panel
+        // is laid out across the whole client area and gets hidden under the sidebar and status bar.
         var root = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background };
         Controls.Add(root);
 
-        // 1. Bottom Status Bar
-        var statusBar = BuildStatusBar();
-        root.Controls.Add(statusBar);
-
-        // 2. Left Navigation Sidebar
-        var sidebar = BuildSidebar();
-        root.Controls.Add(sidebar);
-
-        // 3. Central Content Panel (Houses all views)
+        // 1. Central Content Panel (houses all views)
         _contentPanel = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Theme.Background,
-            Padding = new Padding(16, 16, 16, 12)
+            Padding = new Padding(20, 16, 20, 12)
         };
         root.Controls.Add(_contentPanel);
+
+        // 2. Left Navigation Sidebar
+        root.Controls.Add(BuildSidebar());
+
+        // 3. Bottom Status Bar (spans full width)
+        root.Controls.Add(BuildStatusBar());
 
         // Create individual views
         _views["ACQUIRE"] = BuildAcquisitionView();
@@ -178,6 +179,7 @@ public sealed class MainForm : Form
         var brandSub = new Label
         {
             Text = "FORENSIC ACQUISITION\n& ARTIFACT ANALYSIS",
+            UseMnemonic = false,
             ForeColor = Theme.PrimaryLight,
             Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
             Dock = DockStyle.Top,
@@ -264,6 +266,7 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(12, 0, 0, 0),
             Cursor = Cursors.Hand,
+            UseMnemonic = false,
             UseVisualStyleBackColor = false
         };
         btn.FlatAppearance.BorderSize = 0;
@@ -288,7 +291,7 @@ public sealed class MainForm : Form
             btn.BackColor = isCurrent ? Theme.SidebarActive : Color.Transparent;
             btn.ForeColor = isCurrent ? Color.White : Theme.TextSecondary;
             btn.FlatAppearance.BorderSize = isCurrent ? 1 : 0;
-            btn.FlatAppearance.BorderColor = isCurrent ? Theme.PrimaryLight : Color.Transparent;
+            btn.FlatAppearance.BorderColor = isCurrent ? Theme.PrimaryLight : Theme.SidebarBackground;
         }
 
         if (viewName == "TIMELINE") LoadTimelineData();
@@ -314,8 +317,8 @@ public sealed class MainForm : Form
             RowCount = 1,
             BackColor = Color.Transparent
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220)); // ADB status
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240)); // Target Device
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300)); // ADB status
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260)); // Target Device
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // Case info
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180)); // Progress Bar
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210)); // Notice
@@ -402,6 +405,7 @@ public sealed class MainForm : Form
         var title = new Label
         {
             Text = "Acquisition & Evidence Center",
+            UseMnemonic = false,
             Font = Theme.HeaderFont,
             ForeColor = Theme.TextPrimary,
             Dock = DockStyle.Top,
@@ -444,10 +448,12 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
-            SplitterDistance = 640,
             SplitterWidth = 8,
             BackColor = Theme.Border
         };
+        // Give the artifacts table ~58% of the width (min 560 px) and keep a usable preview pane.
+        split.HandleCreated += (_, _) => ApplySplit(split, 0.58, 560, 360);
+        split.SizeChanged += (_, _) => { if (!split.Capture) ApplySplit(split, 0.58, 560, 360); };
 
         // Left Pane: Artifacts Table
         var leftPane = BuildArtifactsTablePane();
@@ -466,6 +472,19 @@ public sealed class MainForm : Form
 
         panel.Controls.Add(mainLayout);
         return panel;
+    }
+
+    private static void ApplySplit(SplitContainer split, double ratio, int min1, int min2)
+    {
+        if (split.Width <= min1 + min2 + split.SplitterWidth) return;
+        try
+        {
+            split.Panel1MinSize = min1;
+            split.Panel2MinSize = min2;
+            var target = (int)(split.Width * ratio);
+            split.SplitterDistance = Math.Max(min1, Math.Min(target, split.Width - min2 - split.SplitterWidth));
+        }
+        catch (Exception) { /* splitter sizing is cosmetic; never let it crash the UI */ }
     }
 
     private Control BuildAcquisitionToolbar()
@@ -586,7 +605,7 @@ public sealed class MainForm : Form
         };
         topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
 
         var title = new Label
         {
@@ -650,12 +669,12 @@ public sealed class MainForm : Form
     {
         _gridArtifacts.Columns.Clear();
 
-        var colType = new DataGridViewTextBoxColumn { HeaderText = "Artifact Type", DataPropertyName = "Type", Width = 130 };
-        var colFile = new DataGridViewTextBoxColumn { HeaderText = "File Name", DataPropertyName = "FileName", Width = 150 };
-        var colRecords = new DataGridViewTextBoxColumn { HeaderText = "Records", DataPropertyName = "Records", Width = 75 };
-        var colStatus = new DataGridViewTextBoxColumn { HeaderText = "Integrity", DataPropertyName = "StatusText", Width = 95 };
-        var colHash = new DataGridViewTextBoxColumn { HeaderText = "SHA-256 Digest", DataPropertyName = "Sha256", Width = 280, FillWeight = 200 };
-        var colTime = new DataGridViewTextBoxColumn { HeaderText = "Acquired Time", DataPropertyName = "AcquiredAt", Width = 145 };
+        var colType = new DataGridViewTextBoxColumn { HeaderText = "Artifact Type", DataPropertyName = "Type", Width = 140, MinimumWidth = 110 };
+        var colFile = new DataGridViewTextBoxColumn { HeaderText = "File Name", DataPropertyName = "FileName", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, FillWeight = 100, MinimumWidth = 130 };
+        var colRecords = new DataGridViewTextBoxColumn { HeaderText = "Records", DataPropertyName = "Records", Width = 100, MinimumWidth = 90, DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Padding = new Padding(8, 0, 14, 0) } };
+        var colStatus = new DataGridViewTextBoxColumn { HeaderText = "Integrity", DataPropertyName = "StatusText", Width = 110, MinimumWidth = 100 };
+        var colHash = new DataGridViewTextBoxColumn { HeaderText = "SHA-256 Digest", DataPropertyName = "Sha256", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, FillWeight = 160, MinimumWidth = 200 };
+        var colTime = new DataGridViewTextBoxColumn { HeaderText = "Acquired Time", DataPropertyName = "AcquiredAt", Width = 170, MinimumWidth = 150 };
 
         _gridArtifacts.Columns.AddRange(colType, colFile, colRecords, colStatus, colHash, colTime);
 
@@ -701,10 +720,10 @@ public sealed class MainForm : Form
             RowCount = 1,
             BackColor = Color.Transparent
         };
-        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); // Title
-        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); // Meta
-        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105)); // Copy Btn
-        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 115)); // Notepad Btn
+        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220)); // Title
+        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // Meta
+        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125)); // Copy Btn
+        topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); // Editor Btn
 
         _artifactPreviewTitle = new Label
         {
@@ -1212,6 +1231,7 @@ public sealed class MainForm : Form
         var title = new Label
         {
             Text = "Device Inspector & Live Diagnostics",
+            UseMnemonic = false,
             Font = Theme.HeaderFont,
             ForeColor = Theme.TextPrimary,
             Dock = DockStyle.Top,
@@ -1258,7 +1278,7 @@ public sealed class MainForm : Form
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface, Padding = new Padding(16) };
 
         var topHeader = new Panel { Dock = DockStyle.Top, Height = 40 };
-        var title = new Label { Text = "Target Device Hardware & OS Profile", Font = Theme.SubHeaderFont, ForeColor = Theme.TextPrimary, Dock = DockStyle.Left, AutoSize = true };
+        var title = new Label { Text = "Target Device Hardware & OS Profile", UseMnemonic = false, Font = Theme.SubHeaderFont, ForeColor = Theme.TextPrimary, Dock = DockStyle.Left, AutoSize = true };
         var refreshBtn = new Button { Text = "↻ Re-scan", Dock = DockStyle.Right, Width = 95 };
         Theme.StyleButton(refreshBtn, ButtonVariant.Secondary);
         refreshBtn.Click += async (_, _) => await RefreshDeviceDetailsAsync();
@@ -1501,7 +1521,7 @@ public sealed class MainForm : Form
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // Log box
 
         var header = new Panel { Dock = DockStyle.Fill };
-        var title = new Label { Text = "Forensic Audit & Session Logs", Font = Theme.HeaderFont, ForeColor = Theme.TextPrimary, Dock = DockStyle.Top, Height = 30 };
+        var title = new Label { Text = "Forensic Audit & Session Logs", UseMnemonic = false, Font = Theme.HeaderFont, ForeColor = Theme.TextPrimary, Dock = DockStyle.Top, Height = 30 };
         var subtitle = new Label { Text = "Immutable examiner session log and ADB command execution tracking.", Font = Theme.BodyFont, ForeColor = Theme.TextSecondary, Dock = DockStyle.Bottom, Height = 22 };
         header.Controls.Add(subtitle);
         header.Controls.Add(title);
@@ -1574,7 +1594,7 @@ public sealed class MainForm : Form
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // Padding
 
         var header = new Panel { Dock = DockStyle.Fill };
-        var title = new Label { Text = "Configuration & Environment", Font = Theme.HeaderFont, ForeColor = Theme.TextPrimary, Dock = DockStyle.Top, Height = 30 };
+        var title = new Label { Text = "Configuration & Environment", UseMnemonic = false, Font = Theme.HeaderFont, ForeColor = Theme.TextPrimary, Dock = DockStyle.Top, Height = 30 };
         var subtitle = new Label { Text = "Configure Android SDK platform-tools path, evidence storage location, and database connectivity.", Font = Theme.BodyFont, ForeColor = Theme.TextSecondary, Dock = DockStyle.Bottom, Height = 22 };
         header.Controls.Add(subtitle);
         header.Controls.Add(title);
